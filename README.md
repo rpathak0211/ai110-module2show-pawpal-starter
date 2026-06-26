@@ -44,14 +44,34 @@ pip install -r requirements.txt
 
 ## 🖥️ Sample Output
 
-Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+Run `python main.py` to generate a schedule from the demo data:
 
 ```
-# e.g.:
-# Daily plan for Biscuit (Golden Retriever):
-#   08:00 — Morning walk (30 min) [priority: high]
-#   09:00 — Feeding (10 min) [priority: high]
-#   ...
+╔══════════════════════════════════════╗
+║         🐾 TODAY'S PAWPAL SCHEDULE   ║
+╠══════════════════════════════════════╣
+║  Owner    : Alex                     ║
+║  Timing   : morning                  ║
+║  Available: 60 min                   ║
+╚══════════════════════════════════════╝
+
+  1. Morning Walk
+     Type: Exercise      Duration: 20 min
+     Priority: High       Status: ○ Pending
+
+  2. Feed Buddy
+     Type: Feeding       Duration: 10 min
+     Priority: High       Status: ○ Pending
+
+  3. Clean Litter Box
+     Type: Hygiene       Duration: 10 min
+     Priority: Medium     Status: ○ Pending
+
+  4. Playtime
+     Type: Exercise      Duration: 15 min
+     Priority: Low        Status: ○ Pending
+
+  Time used: 55 / 60 min
 ```
 
 ## 🧪 Testing PawPal+
