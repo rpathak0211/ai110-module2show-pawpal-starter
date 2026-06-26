@@ -1,15 +1,55 @@
 classDiagram
-    %% Replace the placeholders below with your actual classes, attributes, methods, and relationships.
-    %% Keep this file updated so it matches your final implementation.
-
-    class ClassName {
-        +type attribute
-        +method() returnType
+    class Pet {
+        +str pet_name
+        +str pet_type
+        +int age
+        +str breed
+        +str special_needs
+        +update_info() None
+        +display_pet_info() str
     }
 
-    class AnotherClass {
-        +type attribute
-        +method() returnType
+    class Owner {
+        +str owner_name
+        +int available_time
+        +str preferred_schedule
+        +update_preferences() None
+        +get_available_time() int
     }
 
-    ClassName --> AnotherClass : relationship
+    class Task {
+        +str task_name
+        +int duration
+        +int priority
+        +str task_type
+        +bool completed
+        +edit_task() None
+        +mark_complete() None
+        +get_task_details() dict
+    }
+
+    class Planner {
+        +list task_list
+        +list daily_plan
+        +int available_time
+        +add_task(task: Task) None
+        +remove_task(task: Task) None
+        +generate_schedule() list
+        +prioritize_tasks() list
+        +explain_plan() str
+    }
+
+    class StreamlitUI {
+        +dict form_inputs
+        +list selected_options
+        +collect_user_input() dict
+        +display_schedule(plan: list) None
+        +show_explanation(explanation: str) None
+    }
+
+    Owner "1" --> "1..*" Pet : owns
+    Owner "1" --> "1" Planner : uses
+    Planner "1" --> "0..*" Task : manages
+    Pet "1" --> "0..*" Task : assigned
+    StreamlitUI --> Owner : creates
+    StreamlitUI --> Planner : drives
