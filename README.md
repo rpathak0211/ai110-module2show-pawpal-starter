@@ -92,14 +92,17 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Sort by priority | `Planner.prioritize_tasks()` | Sorts pending tasks descending by priority (3 = high). Used internally by `generate_schedule()` to decide order. |
+| Sort by duration | `Planner.sort_by_duration(ascending)` | Returns task list sorted shortest- or longest-first without mutating it. Useful for packing the most tasks into a tight schedule. |
+| Sort by time | `Planner.sort_by_time()` | Sorts tasks chronologically by `start_time` ("HH:MM") using a numeric lambda key; tasks with no start time are appended last. |
+| Filter by status | `Planner.filter_tasks(completed=...)` | Returns only pending or only completed tasks. Filters can be combined (AND logic) with `task_type`. |
+| Filter by pet | `Owner.filter_tasks_by_pet(pet_name)` | Returns all tasks belonging to a specific pet by name. |
+| Recurring tasks | `Task.next_occurrence()` | Creates a new Task instance for the next daily (`+1 day`) or weekly (`+7 days`) occurrence using Python's `timedelta`. |
+| Auto-queue recurrence | `Planner.mark_task_complete(task)` | Marks a task done and automatically appends its next occurrence to `task_list` if `frequency != "once"`. |
+| Budget conflict detection | `Planner.detect_conflicts()` | Returns tasks excluded from the daily plan because they exceeded the remaining time budget. Must be called after `generate_schedule()`. |
+| Time-overlap detection | `Planner.detect_time_conflicts()` | Pairwise O(n²) scan over timed tasks; returns human-readable warning strings for any overlapping HH:MM windows. Never raises — returns an empty list when there are no conflicts. |
 
 ## 📸 Demo Walkthrough
 

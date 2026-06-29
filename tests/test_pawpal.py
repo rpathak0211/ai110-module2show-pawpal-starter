@@ -1,4 +1,5 @@
 import pytest
+from datetime import date, timedelta
 from pawpal_system import Task, Pet, Owner, Planner
 
 
@@ -172,3 +173,157 @@ def test_planner_explain_plan_after_schedule():
     result = planner.explain_plan()
     assert "Walk" in result
     assert "20" in result
+
+
+# ---------------------------------------------------------------------------
+# Algorithmic layer tests
+# ---------------------------------------------------------------------------
+
+def test_sort_by_duration_ascending():
+    planner = Planner(available_time=60)
+    planner.add_task(Task(task_name="Long", duration=30, priority=2, task_type="Exercise"))
+    planner.add_task(Task(task_name="Short", duration=5, priority=2, task_type="Exercise"))
+    planner.add_task(Task(task_name="Mid", duration=15, priority=2, task_type="Exercise"))
+    sorted_tasks = planner.sort_by_duration(ascending=True)
+    durations = [t.duration for t in sorted_tasks]
+    assert durations == sorted(durations)
+
+def test_sort_by_duration_descending():
+    planner = Planner(available_time=60)
+    planner.add_task(Task(task_name="Long", duration=30, priority=2, task_type="Exercise"))
+    planner.add_task(Task(task_name="Short", duration=5, priority=2, task_type="Exercise"))
+    sorted_tasks = planner.sort_by_duration(ascending=False)
+    assert sorted_tasks[0].duration == 30
+
+def test_filter_tasks_by_completion():
+    planner = Planner(available_time=60)
+    done = Task(task_name="Walk", duration=20, priority=3, task_type="Exercise")
+    done.mark_complete()
+    pending = Task(task_name="Feed", duration=10, priority=2, task_type="Feeding")
+    planner.add_task(done)
+    planner.add_task(pending)
+    assert planner.filter_tasks(completed=True) == [done]
+    assert planner.filter_tasks(completed=False) == [pending]
+
+def test_filter_tasks_by_type():
+    planner = Planner(available_time=60)
+    walk = Task(task_name="Walk", duration=20, priority=3, task_type="Exercise")
+    feed = Task(task_name="Feed", duration=10, priority=2, task_type="Feeding")
+    planner.add_task(walk)
+    planner.add_task(feed)
+    result = planner.filter_tasks(task_type="Exercise")
+    assert walk in result
+    assert feed not in result
+
+def test_get_recurring_tasks():
+    planner = Planner(available_time=60)
+    once = Task(task_name="Vet", duration=60, priority=2, task_type="Health", frequency="once")
+    daily = Task(task_name="Walk", duration=20, priority=3, task_type="Exercise", frequency="daily")
+    weekly = Task(task_name="Bath", duration=30, priority=1, task_type="Hygiene", frequency="weekly")
+    planner.add_task(once)
+    planner.add_task(daily)
+    planner.add_task(weekly)
+    recurring = planner.get_recurring_tasks()
+    assert daily in recurring
+    assert weekly in recurring
+    assert once not in recurring
+
+def test_detect_conflicts():
+    planner = Planner(available_time=20)
+    fits = Task(task_name="Feed", duration=10, priority=3, task_type="Feeding")
+    too_long = Task(task_name="Long Walk", duration=30, priority=2, task_type="Exercise")
+    planner.add_task(fits)
+    planner.add_task(too_long)
+    planner.generate_schedule()
+    conflicts = planner.detect_conflicts()
+    assert too_long in conflicts
+    assert fits not in conflicts
+
+def test_next_occurrence_daily():
+    task = Task(task_name="Walk", duration=20, priority=3, task_type="Exercise",
+                frequency="daily", due_date="2026-06-29")
+    nxt = task.next_occurrence()
+    assert nxt.due_date == "2026-06-30"
+    assert nxt.completed is False
+    assert nxt.task_name == task.task_name
+    assert nxt.frequency == "daily"
+
+def test_next_occurrence_weekly():
+    task = Task(task_name="Bath", duration=30, priority=2, task_type="Hygiene",
+                frequency="weekly", due_date="2026-06-29")
+    nxt = task.next_occurrence()
+    assert nxt.due_date == "2026-07-06"
+
+def test_next_occurrence_once_raises():
+    task = Task(task_name="Vet", duration=60, priority=3, task_type="Health", frequency="once")
+    with pytest.raises(ValueError):
+        task.next_occurrence()
+
+def test_next_occurrence_no_due_date_uses_today():
+    task = Task(task_name="Walk", duration=20, priority=3, task_type="Exercise", frequency="daily")
+    nxt = task.next_occurrence()
+    expected = str(date.today() + timedelta(days=1))
+    assert nxt.due_date == expected
+
+def test_planner_mark_task_complete_recurring():
+    planner = Planner(available_time=60)
+    task = Task(task_name="Walk", duration=20, priority=3, task_type="Exercise",
+                frequency="daily", due_date="2026-06-29")
+    planner.add_task(task)
+    next_task = planner.mark_task_complete(task)
+    assert task.completed is True
+    assert next_task is not None
+    assert next_task.due_date == "2026-06-30"
+    assert next_task in planner.task_list
+    assert len(planner.task_list) == 2
+
+def test_planner_mark_task_complete_once():
+    planner = Planner(available_time=60)
+    task = Task(task_name="Vet", duration=60, priority=3, task_type="Health", frequency="once")
+    planner.add_task(task)
+    result = planner.mark_task_complete(task)
+    assert task.completed is True
+    assert result is None
+    assert len(planner.task_list) == 1   # no new task spawned
+
+def test_detect_time_conflicts_overlap():
+    planner = Planner(available_time=120)
+    planner.add_task(Task(task_name="Walk",     duration=30, priority=3, task_type="Exercise", start_time="09:00"))
+    planner.add_task(Task(task_name="Grooming", duration=20, priority=2, task_type="Hygiene",  start_time="09:15"))
+    warnings = planner.detect_time_conflicts()
+    assert len(warnings) == 1
+    assert "Walk" in warnings[0]
+    assert "Grooming" in warnings[0]
+
+def test_detect_time_conflicts_no_overlap():
+    planner = Planner(available_time=120)
+    planner.add_task(Task(task_name="Walk", duration=30, priority=3, task_type="Exercise", start_time="09:00"))
+    planner.add_task(Task(task_name="Feed", duration=10, priority=3, task_type="Feeding",  start_time="09:30"))
+    assert planner.detect_time_conflicts() == []
+
+def test_detect_time_conflicts_exact_boundary():
+    planner = Planner(available_time=120)
+    # Walk ends at 09:30; Feed starts at 09:30 — back-to-back, not overlapping
+    planner.add_task(Task(task_name="Walk", duration=30, priority=3, task_type="Exercise", start_time="09:00"))
+    planner.add_task(Task(task_name="Feed", duration=10, priority=3, task_type="Feeding",  start_time="09:30"))
+    assert planner.detect_time_conflicts() == []
+
+def test_detect_time_conflicts_skips_tasks_without_start_time():
+    planner = Planner(available_time=120)
+    planner.add_task(Task(task_name="Walk", duration=30, priority=3, task_type="Exercise", start_time="09:00"))
+    planner.add_task(Task(task_name="Meds", duration=5,  priority=3, task_type="Health"))   # no start_time
+    assert planner.detect_time_conflicts() == []
+
+def test_owner_filter_tasks_by_pet():
+    owner = Owner(owner_name="Alex", available_time=60, preferred_schedule="morning")
+    dog = Pet(pet_name="Buddy", pet_type="Dog", age=3, breed="Labrador")
+    cat = Pet(pet_name="Whiskers", pet_type="Cat", age=5, breed="Siamese")
+    t1 = Task(task_name="Walk", duration=20, priority=3, task_type="Exercise")
+    t2 = Task(task_name="Litter", duration=10, priority=2, task_type="Hygiene")
+    dog.add_task(t1)
+    cat.add_task(t2)
+    owner.add_pet(dog)
+    owner.add_pet(cat)
+    assert owner.filter_tasks_by_pet("Buddy") == [t1]
+    assert owner.filter_tasks_by_pet("Whiskers") == [t2]
+    assert owner.filter_tasks_by_pet("Unknown") == []

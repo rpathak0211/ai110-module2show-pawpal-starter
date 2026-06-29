@@ -1,5 +1,12 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
+from datetime import date, timedelta
+
+
+def _to_minutes(hhmm: str) -> int:
+    """Convert a 'HH:MM' string to total minutes since midnight."""
+    h, m = hhmm.split(":")
+    return int(h) * 60 + int(m)
 
 
 # ---------------------------------------------------------------------------
@@ -13,6 +20,9 @@ class Task:
     priority: int          # 1 (low) – 3 (high)
     task_type: str
     completed: bool = False
+    frequency: str = "once"       # "once" | "daily" | "weekly"
+    start_time: str = ""          # optional "HH:MM" wall-clock start
+    due_date: str = ""            # optional "YYYY-MM-DD" due date
 
     def edit_task(self, **kwargs) -> None:
         """Update any task attribute by passing it as a keyword argument."""
@@ -24,6 +34,27 @@ class Task:
         """Mark this task as completed."""
         self.completed = True
 
+    def next_occurrence(self) -> Task:
+        """Return a new incomplete Task due on the next daily or weekly occurrence.
+
+        Uses timedelta(days=1) for daily tasks and timedelta(weeks=1) for weekly tasks,
+        anchored to due_date if set, otherwise today. Raises ValueError for one-off tasks.
+        """
+        delta = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1)}.get(self.frequency)
+        if delta is None:
+            raise ValueError(f"'{self.task_name}' is not a recurring task (frequency='{self.frequency}').")
+        base = date.fromisoformat(self.due_date) if self.due_date else date.today()
+        return Task(
+            task_name=self.task_name,
+            duration=self.duration,
+            priority=self.priority,
+            task_type=self.task_type,
+            completed=False,
+            frequency=self.frequency,
+            start_time=self.start_time,
+            due_date=str(base + delta),
+        )
+
     def get_task_details(self) -> dict:
         """Return a dictionary of all task attributes."""
         return {
@@ -32,6 +63,9 @@ class Task:
             "priority": self.priority,
             "task_type": self.task_type,
             "completed": self.completed,
+            "frequency": self.frequency,
+            "start_time": self.start_time,
+            "due_date": self.due_date,
         }
 
 
@@ -108,6 +142,13 @@ class Owner:
             all_tasks.extend(pet.tasks)
         return all_tasks
 
+    def filter_tasks_by_pet(self, pet_name: str) -> list[Task]:
+        """Return tasks belonging to the named pet, or an empty list if not found."""
+        for pet in self.pets:
+            if pet.pet_name == pet_name:
+                return pet.tasks
+        return []
+
 
 class Planner:
     def __init__(self, available_time: int) -> None:
@@ -172,3 +213,85 @@ class Planner:
         lines.append("-" * 40)
         lines.append(f"Time used: {total_minutes} / {self.available_time} min")
         return "\n".join(lines)
+
+    # ------------------------------------------------------------------
+    # Algorithmic layer
+    # ------------------------------------------------------------------
+
+    def sort_by_duration(self, ascending: bool = True) -> list[Task]:
+        """Return task_list sorted by duration without mutating the list.
+
+        Shortest-first (ascending=True) is useful for packing the most tasks into
+        a tight schedule; longest-first surfaces high-cost tasks for review.
+        """
+        return sorted(self.task_list, key=lambda t: t.duration, reverse=not ascending)
+
+    def sort_by_time(self) -> list[Task]:
+        """Return task_list in chronological order by start_time (HH:MM).
+
+        Uses a lambda key that converts 'HH:MM' to (int, int) so comparison is
+        numeric, not lexicographic. Tasks with no start_time are appended last.
+        """
+        timed = [t for t in self.task_list if t.start_time]
+        untimed = [t for t in self.task_list if not t.start_time]
+        return sorted(timed, key=lambda t: tuple(int(x) for x in t.start_time.split(":"))) + untimed
+
+    def filter_tasks(self, completed: bool | None = None, task_type: str | None = None) -> list[Task]:
+        """Return tasks matching the given filters; pass None for a parameter to skip it.
+
+        Filters are applied in sequence (AND logic). Example:
+            filter_tasks(completed=False, task_type='Exercise')
+            → all pending exercise tasks.
+        """
+        result = self.task_list
+        if completed is not None:
+            result = [t for t in result if t.completed == completed]
+        if task_type is not None:
+            result = [t for t in result if t.task_type == task_type]
+        return result
+
+    def mark_task_complete(self, task: Task) -> Task | None:
+        """Mark a task done and automatically queue its next occurrence if recurring.
+
+        Calls task.mark_complete(), then delegates to task.next_occurrence() for
+        daily/weekly tasks and appends the result to task_list. Returns the new
+        Task, or None if the task frequency is 'once'.
+        """
+        task.mark_complete()
+        if task.frequency != "once":
+            next_task = task.next_occurrence()
+            self.task_list.append(next_task)
+            return next_task
+        return None
+
+    def get_recurring_tasks(self) -> list[Task]:
+        """Return tasks that repeat on a daily or weekly schedule."""
+        return [t for t in self.task_list if t.frequency != "once"]
+
+    def detect_conflicts(self) -> list[Task]:
+        """Return tasks excluded from the daily plan because they exceeded the time budget.
+
+        Must be called after generate_schedule().
+        """
+        scheduled = set(id(t) for t in self.daily_plan)
+        return [t for t in self.prioritize_tasks() if id(t) not in scheduled]
+
+    def detect_time_conflicts(self) -> list[str]:
+        """Return warning strings for tasks whose HH:MM time windows overlap; never raises.
+
+        Uses a pairwise O(n²) scan over tasks that have a start_time set. Two tasks
+        overlap when A.start < B.end AND B.start < A.end. Tasks without a start_time
+        are skipped — they are invisible to this check by design.
+        """
+        warnings = []
+        timed = [t for t in self.task_list if t.start_time]
+        for i, a in enumerate(timed):
+            for b in timed[i + 1:]:
+                a_start = _to_minutes(a.start_time)
+                b_start = _to_minutes(b.start_time)
+                if a_start < b_start + b.duration and b_start < a_start + a.duration:
+                    warnings.append(
+                        f"Conflict: '{a.task_name}' ({a.start_time}, {a.duration} min) "
+                        f"overlaps '{b.task_name}' ({b.start_time}, {b.duration} min)"
+                    )
+        return warnings

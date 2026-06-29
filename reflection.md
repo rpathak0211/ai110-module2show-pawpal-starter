@@ -35,10 +35,24 @@ This change improved code organization, made testing easier, and allowed task ob
 - What constraints does your scheduler consider (for example: time, priority, preferences)?
 - How did you decide which constraints mattered most?
 
+The scheduler considers two constraints: **available time** (the owner's daily time budget in minutes) and **task priority** (1 = low, 2 = medium, 3 = high). Priority was chosen as the primary ordering because a pet owner's most critical tasks — feeding, medication — must happen regardless of how long they take, so sorting by priority first ensures those are always attempted before optional tasks like playtime or grooming.
+
+Time is the hard constraint: no task is added to the plan if it would exceed the remaining budget. This is enforced greedily — the scheduler scans tasks in priority order and takes each one that fits, skipping those that don't and continuing to check smaller tasks that might still fit.
+
 **b. Tradeoffs**
 
 - Describe one tradeoff your scheduler makes.
 - Why is that tradeoff reasonable for this scenario?
+
+**Greedy priority ordering vs. optimal packing (knapsack)**
+
+The scheduler uses a greedy algorithm: it picks tasks in descending priority order and takes each one that fits within the remaining time. This is fast (O(n log n) — one sort, one scan) and predictable, but it does not guarantee the maximum number of tasks or maximum time utilization.
+
+*Example of the gap:* with 30 minutes available and tasks [25 min priority-3, 10 min priority-2, 10 min priority-2], the greedy scheduler picks the 25-min task first (correct — it's highest priority), leaving only 5 min, so both 10-min tasks are skipped. An optimal knapsack solver would pick the two 10-min tasks instead (20 min used, 2 tasks completed vs. 1). But knapsack is NP-hard and exponentially slower for large task lists, which is overkill for a daily pet care app.
+
+This tradeoff is reasonable here because: (1) task priority reflects real urgency — a pet's medication outranks a grooming session even if it costs more time, (2) the owner sets the priorities, so the output is explainable ("I scheduled your high-priority tasks first"), and (3) most real task lists are short enough that the greedy result is nearly optimal anyway.
+
+A second tradeoff: `detect_time_conflicts()` only inspects tasks that have a `start_time` set. Tasks without a wall-clock time are invisible to conflict detection, so two untimed tasks can coexist in the plan even if a human would schedule them at the same time. This was a deliberate simplification — forcing every task to have a start time would add friction to the UI for tasks where timing doesn't matter (e.g., "give treats").
 
 ---
 
